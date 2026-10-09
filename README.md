@@ -1,6 +1,6 @@
 # Terraform Without Apply: Infrastructure Testing Lab
 
-[![Terraform Checks](https://github.com/manishpcp/terraform-offline-testing/actions/workflows/ci.yml/badge.svg)](https://github.com/manishpcp/terraform-offline-testing/actions/workflows/ci.yml)
+
 
 A production-ready starter repository that catches infrastructure mistakes before any cloud resource exists. All validation runs offline—no AWS credentials, no IAM roles, no cloud API calls.
 
