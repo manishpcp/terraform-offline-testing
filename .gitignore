@@ -1,0 +1,34 @@
+
+# Terraform working directories
+**/.terraform/*
+
+# Terraform state
+*.tfstate
+*.tfstate.*
+
+# Saved plans and generated reports
+tfplan
+*.tfplan
+tfplan.json
+**/tfplan.json
+**/plan.txt
+
+# Crash logs
+crash.log
+crash.*.log
+
+# Local variable files: may contain sensitive values
+*.tfvars
+*.tfvars.json
+
+# Terraform CLI configuration
+.terraformrc
+terraform.rc
+
+# Tool environments and generated files
+.venv/
+.checkov.baseline
+.external_modules/
+
+# Lock files must be committed — do NOT ignore them
+# .terraform.lock.hcl

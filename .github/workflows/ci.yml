@@ -1,0 +1,141 @@
+name: terraform-checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # No cloud credentials exist in this workflow on purpose.
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  AWS_EC2_METADATA_DISABLED: "true"
+  TERRAFORM_VERSION: "1.12.2"
+  TFLINT_VERSION: "v0.58.0"
+  CHECKOV_VERSION: "3.2.443"
+
+jobs:
+  static:
+    name: static checks
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      # hashicorp/setup-terraform v3.1.2
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269ef065
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive -diff
+
+      - name: terraform init and validate
+        run: |
+          for dir in modules/secure-bucket envs/dev; do
+            terraform -chdir="$dir" init -backend=false
+            terraform -chdir="$dir" validate
+          done
+
+      - name: Install TFLint
+        run: |
+          curl -sLo tflint.zip "https://github.com/terraform-linters/tflint/releases/download/${{ env.TFLINT_VERSION }}/tflint_linux_amd64.zip"
+          unzip -q tflint.zip -d /usr/local/bin
+          rm tflint.zip
+          tflint --version
+
+      - name: TFLint
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tflint --init
+          tflint --chdir=modules/secure-bucket
+          tflint --chdir=envs/dev
+
+      - name: Checkov
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - run: |
+          pip install --quiet checkov==${{ env.CHECKOV_VERSION }}
+          checkov --config-file .checkov.yaml
+
+  unit-tests:
+    name: terraform test
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      # hashicorp/setup-terraform v3.1.2
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269ef065
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Run module tests (mock provider, no credentials)
+        run: |
+          terraform -chdir=modules/secure-bucket init -backend=false
+          terraform -chdir=modules/secure-bucket test -verbose
+
+  plan:
+    name: offline plan
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      # hashicorp/setup-terraform v3.1.2
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269ef065
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Plan without credentials
+        working-directory: envs/dev
+        run: |
+          terraform init -backend=false
+          terraform plan -var offline=true -out=tfplan
+          terraform show -no-color tfplan > plan.txt
+          terraform show -json tfplan > tfplan.json
+
+      - name: Scan the plan with Checkov
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - run: |
+          pip install --quiet checkov==${{ env.CHECKOV_VERSION }}
+          checkov -f envs/dev/tfplan.json --framework terraform_plan --compact --quiet --skip-check CKV_AWS_145
+
+      - name: Block plans that delete or replace resources
+        run: jq -e '[.resource_changes[] | select(.change.actions | index("delete"))] | length == 0' envs/dev/tfplan.json
+
+      - name: Show plan in the job summary
+        run: |
+          {
+            echo '### Terraform plan (offline)'
+            echo '```'
+            cat envs/dev/plan.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  gate:
+    name: all checks passed
+    runs-on: ubuntu-latest
+    needs: [static, unit-tests, plan]
+    if: always()
+    steps:
+      - name: Fail if any required job failed or was skipped
+        run: |
+          echo '${{ toJSON(needs) }}'
+          test "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}" = "false"
