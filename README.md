@@ -6,7 +6,7 @@ A production-ready starter repository that catches infrastructure mistakes befor
 
 **Repository:** https://github.com/manishpcp/terraform-offline-testing
 
-**Blog Post:** [Terraform Without Apply: Build an Infrastructure Testing Lab on EC2](https://manishpcp.github.io/terraform-offline-testing/)
+**Blog Post:** [Terraform Without Apply: Build an Infrastructure Testing Lab on EC2](https://builder.aws.com/content/3KRqA1JGQ2tk8gLwggDr9Wrtw3t/terraform-testing-without-aws-build-an-offline-infrastructure-validation-pipeline)
 
 ## Quick Start
 
